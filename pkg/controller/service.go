@@ -63,6 +63,12 @@ func (c *Controller) enqueueDeleteService(obj interface{}) {
 	//klog.V(3).Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
+	// err := c.ovnLegacyClient.DeleteAddressSet(svc.Name + "." + svc.Namespace)
+	// if err != nil {
+	// 	klog.Errorf("failed to delete nameaddress %v", err)
+	// }
+	// klog.Infof("enqueue delete nameaddress %s", svc.Name)
+
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
 	if ok || svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" {
 
@@ -339,11 +345,13 @@ func (c *Controller) handleUpdateService(key string) error {
 		return err
 	}
 	klog.V(3).Infof("exist tcp vips are %v", vips)
+	klog.Info("tcpVips is: %s", tcpVips)
 	for _, vip := range tcpVips {
 		if err := c.ovnLegacyClient.DeleteLoadBalancerVip(vip, oTcpLb); err != nil {
 			klog.Errorf("failed to delete lb %s form %s, %v", vip, oTcpLb, err)
 			return err
 		}
+		klog.Info("Vips is: %s, vip is: %s", vips, vip)
 		if _, ok := vips[vip]; !ok {
 			klog.Infof("add vip %s to tcp lb %s", vip, oTcpLb)
 			c.updateEndpointQueue.Add(key)

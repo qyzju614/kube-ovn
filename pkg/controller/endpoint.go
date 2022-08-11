@@ -185,20 +185,48 @@ func (c *Controller) handleUpdateEndpoint(key string) error {
 		tcpLb, udpLb = vpc.Status.TcpSessionLoadBalancer, vpc.Status.UdpSessionLoadBalancer
 	}
 
+	fakevips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{util.IpReservedLabel: ""}))
+	if err != nil {
+		klog.Errorf("failed to list VIPs: %v", err)
+		return err
+	}
+	for _, fakevip := range fakevips {
+		if fakevip.Spec.Subnet == "subnet-svc" {
+			klog.Info("all staticfakeip is %s", fakevip.Spec.V4ip)
+		}
+	}
+	fakeip, _ := c.virtualIpsLister.Get("service-vip01")
+	klog.Info("static01 fakeip is %s", fakeip.Spec.V4ip)
+
 	for _, settingIP := range LbIPs {
 		for _, port := range svc.Spec.Ports {
 			vip := util.JoinHostPort(settingIP, port.Port)
 			backends := getServicePortBackends(ep, pods, port, settingIP)
+			svcfake := "10.64.0.101:8080"
+			// klog.Infof("service ip is  %s, service fake is %s", vip, svcfake)
+			// err = c.ovnLegacyClient.CreateAddressSetWithAddresses(svcdomin, vip)
+			// if err != nil {
+			// 	klog.Errorf("failed to create nameaddress%v", err)
+			// 	return err
+			// }
 			if port.Protocol == v1.ProtocolTCP {
 				// for performance reason delete lb with no backends
 				if len(backends) != 0 {
+					klog.Infof("Run createloadBalancerRule")
 					err = c.ovnLegacyClient.CreateLoadBalancerRule(tcpLb, vip, backends, string(port.Protocol))
+					if strings.Contains(svc.Name, "chain-1") {
+						err = c.ovnLegacyClient.CreateLoadBalancerRule(tcpLb, svcfake, backends, string(port.Protocol))
+						klog.Infof("Run createloadBalancerRule2")
+					}
 					if err != nil {
 						klog.Errorf("failed to update vip %s to tcp lb, %v", vip, err)
 						return err
 					}
 				} else {
+					klog.Infof("delete createloadBalancerRule")
 					err = c.ovnLegacyClient.DeleteLoadBalancerVip(vip, tcpLb)
+					// klog.Infof("delete createloadBalancerRule2")
+					// err = c.ovnLegacyClient.DeleteLoadBalancerVip(svcdomin, tcpLb)
 					if err != nil {
 						klog.Errorf("failed to delete vip %s at tcp lb, %v", vip, err)
 						return err

@@ -1,0 +1,9 @@
+apiVersion: kubeovn.io/v1
+kind: IptablesDnatRule
+metadata:
+  name: dnat-vip01
+spec:
+  eip: "10.16.0.2"
+  internalIp: "10.166.0.101"
+  internalPort: "8080"
+  

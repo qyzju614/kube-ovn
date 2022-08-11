@@ -1,0 +1,11 @@
+kind: Vpc
+apiVersion: kubeovn.io/v1
+metadata:
+  name: test-vpc-1
+spec:
+  policyRoutes:
+    - action: reroute
+      match: ip4.src==100.64.0.0/16 && ip4.dst==10.166.0.101
+      nextHopIP: 10.16.0.2
+      priority: 11
+

@@ -274,6 +274,7 @@ func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portS
 	var addresses []string
 	addresses = append(addresses, mac)
 	addresses = append(addresses, strings.Split(ip, ",")...)
+	klog.Infof("Createflowip %s", addresses[1])
 	ovnCommand = []string{MayExist, "lsp-add", ls, port}
 	isAddrConflict := false
 	if liveMigration {
@@ -331,6 +332,104 @@ func (c LegacyClient) CreatePort(ls, port, ip, mac, pod, namespace string, portS
 	if pod != "" && namespace != "" {
 		ovnCommand = append(ovnCommand,
 			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:pod=%s/%s", namespace, pod), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	} else {
+		ovnCommand = append(ovnCommand,
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+	}
+
+	if enableDHCP && dhcpOptions != nil {
+		if len(dhcpOptions.DHCPv4OptionsUUID) != 0 {
+			ovnCommand = append(ovnCommand,
+				"--", "lsp-set-dhcpv4-options", port, dhcpOptions.DHCPv4OptionsUUID)
+		}
+		if len(dhcpOptions.DHCPv6OptionsUUID) != 0 {
+			ovnCommand = append(ovnCommand,
+				"--", "lsp-set-dhcpv6-options", port, dhcpOptions.DHCPv6OptionsUUID)
+		}
+	}
+
+	if _, err := c.ovnNbCommand(ovnCommand...); err != nil {
+		klog.Errorf("create port %s failed: %v", port, err)
+		return err
+	}
+	return nil
+}
+
+// CreatePort create logical switch port in ovn
+func (c LegacyClient) CreatePortdomin(ls, port, ip, domin, mac, pod, namespace string, portSecurity bool, securityGroups string, vips string, liveMigration bool, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs) error {
+	var ovnCommand []string
+	var addresses []string
+	var addressesfake []string
+	addresses = append(addresses, mac)
+	addresses = append(addresses, strings.Split(ip, ",")...)
+	addressesfake = append(addressesfake, mac)
+	addressesfake = append(addressesfake, "111.111.111.10")
+	klog.Infof("Createflowip %s, domin %s", addresses, addressesfake)
+	ovnCommand = []string{MayExist, "lsp-add", ls, port}
+	isAddrConflict := false
+	if liveMigration {
+		// add external_id info as the filter of 'live Migration vm port'
+		ovnCommand = append(ovnCommand,
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ls=%s", ls),
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:ip=%s", strings.ReplaceAll(ip, ",", "/")))
+
+		ports, err := c.ListLogicalEntity("logical_switch_port",
+			fmt.Sprintf("external_ids:ls=%s", ls),
+			fmt.Sprintf("external_ids:ip=\"%s\"", strings.ReplaceAll(ip, ",", "/")))
+		if err != nil {
+			klog.Errorf("list logical entity failed: %v", err)
+			return err
+		}
+		if len(ports) > 0 {
+			isAddrConflict = true
+		}
+	}
+
+	if isAddrConflict {
+		// only set mac, and set flag 'liveMigration'
+		ovnCommand = append(ovnCommand, "--", "lsp-set-addresses", port, mac, "--",
+			"set", "logical_switch_port", port, "external_ids:liveMigration=1")
+	} else {
+		// set mac and ip
+		ovnCommand = append(ovnCommand,
+			"--", "lsp-set-addresses", port, strings.Join(addresses, " "))
+		// if strings.Contains(domin, "chain-1") {
+		// 	ovnCommand = append(ovnCommand,
+		// 		"--", "lsp-set-addresses", port, strings.Join(addressesfake, " "))
+		// 	klog.Infof("ovncommnand is %s", ovnCommand)
+		// }
+
+	}
+
+	if portSecurity {
+		if vips != "" {
+			addresses = append(addresses, strings.Split(vips, ",")...)
+		}
+		ovnCommand = append(ovnCommand,
+			"--", "lsp-set-port-security", port, strings.Join(addresses, " "))
+
+		if securityGroups != "" {
+			sgList := strings.Split(securityGroups, ",")
+			ovnCommand = append(ovnCommand,
+				"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:security_groups=%s", strings.ReplaceAll(securityGroups, ",", "/")))
+			for _, sg := range sgList {
+				ovnCommand = append(ovnCommand,
+					"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:associated_sg_%s=true", sg))
+			}
+		}
+	}
+
+	// set vip tag to external_id
+	if vips != "" {
+		ovnCommand = append(ovnCommand, "--", "set", "logical_switch_port", port,
+			fmt.Sprintf("external_ids:vips=%s", strings.ReplaceAll(vips, ",", "/")), "external_ids:attach-vips=true")
+		klog.Infof(" set vip tag to external_id %s", ovnCommand)
+	}
+
+	if pod != "" && namespace != "" {
+		ovnCommand = append(ovnCommand,
+			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:pod=%s/%s", namespace, pod), fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
+		klog.Infof("ovncommnand is %s", ovnCommand)
 	} else {
 		ovnCommand = append(ovnCommand,
 			"--", "set", "logical_switch_port", port, fmt.Sprintf("external_ids:vendor=%s", util.CniTypeName))
@@ -892,6 +991,7 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "--ecmp", "lr-route-add", router, cidrBlock, gw); err != nil {
 					return err
 				}
+				klog.Info("EcmpRouteType command is policy %s,router %s, cidrBlock %s, gw %s", policy, router, cidrBlock, gw)
 			} else {
 				if !strings.ContainsRune(cidrBlock, '/') {
 					filter := []string{fmt.Sprintf("policy=%s", policy), fmt.Sprintf(`ip_prefix="%s"`, cidrBlock), fmt.Sprintf(`nexthop!="%s"`, gw)}
@@ -910,6 +1010,7 @@ func (c LegacyClient) AddStaticRoute(policy, cidr, nextHop, router string, route
 				if _, err := c.ovnNbCommand(MayExist, fmt.Sprintf("%s=%s", Policy, policy), "lr-route-add", router, cidrBlock, gw); err != nil {
 					return err
 				}
+				klog.Info("RouteType command is policy %s,router %s, cidrBlock %s, gw %s", policy, router, cidrBlock, gw)
 			}
 		}
 	}
@@ -1107,6 +1208,8 @@ func (c LegacyClient) UpdateNatRule(policy, logicalIP, externalIP, router, logic
 			return err
 		}
 		_, err := c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
+		klog.Info("snat command router %s, policy %s, externalIP %s, logicalIP %s, port %s, logicalMac %s",
+			router, policy, externalIP, logicalIP, port, logicalMac)
 		return err
 	} else {
 		output, err := c.ovnNbCommand("--format=csv", "--no-heading", "--data=bare", "--columns=external_ip", "find", "NAT", fmt.Sprintf("logical_ip=%s", logicalIP), "type=dnat_and_snat")
@@ -1130,6 +1233,8 @@ func (c LegacyClient) UpdateNatRule(policy, logicalIP, externalIP, router, logic
 				_, err = c.ovnNbCommand(MayExist, "--stateless", "lr-nat-add", router, policy, externalIP, logicalIP, port, logicalMac)
 			} else {
 				_, err = c.ovnNbCommand(MayExist, "lr-nat-add", router, policy, externalIP, logicalIP)
+				klog.Info("dnat_and_snat command router %s, policy %s, externalIP %s, logicalIP %s, port %s, logicalMac %s",
+					router, policy, externalIP, logicalIP, port, logicalMac)
 			}
 			return err
 		}
@@ -1534,6 +1639,8 @@ func (c LegacyClient) CreateAddressSetWithAddresses(name string, addresses ...st
 	}
 
 	_, err = c.ovnNbCommand(args...)
+	klog.Infof("nameaddress command is %s", args)
+
 	return err
 }
 

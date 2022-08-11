@@ -30,6 +30,8 @@ func (c *Controller) InitOVN() error {
 			return err
 		}
 		v4Svc, _ := util.SplitStringIP(c.config.ServiceClusterIPRange)
+		v4Svc = "10.96.0.0/10"
+		klog.Info("loadbalncer ipv4:%s", v4Svc)
 		if v4Svc != "" {
 			if err := c.ovnLegacyClient.SetLBCIDR(v4Svc); err != nil {
 				klog.Errorf("init load balancer svc cidr failed: %v", err)

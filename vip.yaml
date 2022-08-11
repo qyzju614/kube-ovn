@@ -1,0 +1,28 @@
+apiVersion: kubeovn.io/v1
+kind: Vip
+metadata:
+  name: service-vip01
+spec:
+  subnet: subnet-svc
+  v4ip: "10.64.0.101"
+
+---
+apiVersion: kubeovn.io/v1
+kind: Vip
+metadata:
+  name: service-vip02
+spec:
+  subnet: subnet-svc
+  v4ip: "10.64.0.102"
+
+---
+
+apiVersion: kubeovn.io/v1
+kind: Vip
+metadata:
+  name: service-vip03
+spec:
+  subnet: subnet-svc
+  v4ip: "10.64.0.103"
+
+---

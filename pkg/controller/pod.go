@@ -560,7 +560,13 @@ func (c *Controller) handleAddPod(key string) error {
 				DHCPv4OptionsUUID: subnet.Status.DHCPv4OptionsUUID,
 				DHCPv6OptionsUUID: subnet.Status.DHCPv6OptionsUUID,
 			}
-			if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions); err != nil {
+			domin := name + "." + pod.Namespace
+			klog.Infof(" CreatePort service Name %s Namespace %s mac %s IPaddress %s, domin %s, vips %s", name, pod.Namespace, mac, ipStr, domin, vips)
+			// if err := c.ovnLegacyClient.CreatePort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions); err != nil {
+			// 	c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
+			// 	return err
+			// }
+			if err := c.ovnLegacyClient.CreatePortdomin(subnet.Name, portName, ipStr, domin, mac, podName, pod.Namespace, portSecurity, securityGroupAnnotation, vips, podNet.AllowLiveMigration, podNet.Subnet.Spec.EnableDHCP, dhcpOptions); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", err.Error())
 				return err
 			}
@@ -652,6 +658,7 @@ func (c *Controller) handleDeletePod(pod *v1.Pod) error {
 				}
 			}
 			if exGwEnabled == "true" {
+				klog.Infof("run DeleteNatRule")
 				if err := c.ovnLegacyClient.DeleteNatRule(address.Ip, vpc.Name); err != nil {
 					return err
 				}
